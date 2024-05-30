@@ -1,33 +1,48 @@
-import uuid, os
-from flask import Flask, make_response, redirect, request, render_template, url_for
-from flask_wtf.csrf import CSRFProtect
-from model import db, User
-from form import RegisterForm
+import threading, sys, requests, multiprocessing, asyncio, time
 
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///mydatabase.db'
-app.config['SECRET_KEY'] = 'you-will-never-guess'
-csrf = CSRFProtect(app)
-db.init_app(app)
+def downloader(link):
+    temp = link.split(".")
+    ras = temp[-1]
+    temp = temp[-2].split('/')
+    name = temp[-1]
+    time_start = time.time()
+    r = requests.get(link)
+    with open(name + "." + ras, "wb") as code:
+        code.write(r.content)
+    print("Файл - " + name + "." + ras + " скачан за - " + str(time.time() - time_start) + ' сек.')
 
-@app.route('/', methods=['GET', 'POST'])
-def root():
-    if not os.path.exists('./instance/mydatabase.db'):
-        db.create_all()
+async def async_downloader(link):
+    downloader(link)
 
-    form = RegisterForm()
-    print('qqq')
-    if request.method == 'POST' and form.validate():
-        name = form.name.data
-        last_name = form.last_name.data
-        email = form.email.data
-        passwd = form.passwd.data
-        salt = uuid.uuid4().hex
-        hashed_password = hash(passwd + salt)
-        user = User(name=name, last_name=last_name, email=email, passwd=hashed_password, salt=salt) 
-        db.session.add(user)
-        db.session.commit()
-    return render_template('index.html', form=form)
+async def asyncr(links):
+    tasks = []
+    for i in range(len(links)):
+        a = asyncio.create_task(async_downloader(links[i]))
+        await a
 
 if __name__ == '__main__':
-    app.run()
+    links = sys.argv[1:]
+    mod = 'async'
+    match mod:
+        case 'process':
+            processes_list = []
+            for i in range(len(links)):
+                link = links[i]
+                p = multiprocessing.Process(target=downloader, args=(link,))
+                processes_list.append(p)
+                p.start()
+                for p in processes_list:
+                    p.join()
+        case 'potok':
+            threads = []
+            for i in range(len(links)):
+                t = threading.Thread(target=downloader, args=(links[i],))
+                threads.append(t)
+                t.start()
+            for t in threads:
+                t.join()
+        case 'async':
+            asyncio.run(asyncr(links))
+    
+   
+
